@@ -120,7 +120,7 @@ try:
                             py = int(CENTER_Y - y * GRID_SIZE)
                             obstacle_pixel_pos = (px, py)
                             obstacle_history.append((px, py))
-                            costmap.obstacle_layer(0, 0, x, y, obstacle_map)
+                            #costmap.obstacle_layer(0, 0, x, y, obstacle_map)
                             #counter += 1
 
                             # if counter % 250 == 0:  
@@ -141,7 +141,7 @@ try:
         
         for px, py in obstacle_history:
             pygame.draw.circle(screen, (255, 0, 0), (px, py), 5)
-
+        '''
         for (px,py), state in obstacle_map.items():
             if state == 1:  
                 pygame.draw.circle(screen, (0, 0, 255), (CENTER_X+px*GRID_SIZE, CENTER_Y-py*GRID_SIZE), 2)
@@ -149,7 +149,7 @@ try:
                 pygame.draw.circle(screen, (0, 255, 0), (CENTER_X+px*GRID_SIZE, CENTER_Y-py*GRID_SIZE), 2)
             else:
                 continue
-
+        '''     
         pygame.display.flip()
         clock.tick(80)
 
