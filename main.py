@@ -39,6 +39,7 @@ CENTER_Y = WINDOW_HEIGHT // 2
 inflation_radius = 10  
 obstacle_map = {}  
 counter = 0
+map_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
 
 def draw_gridmap():
     x_pixel = CENTER_X
@@ -95,7 +96,7 @@ try:
     time.sleep(2) 
 
     while running:
-        if ser.in_waiting > 0:
+        while ser.in_waiting > 0:
             raw_data = ser.readline()
             try:
                 data_string = raw_data.decode('utf-8', errors='ignore').strip()
@@ -118,11 +119,19 @@ try:
                             # pixel coordinates
                             px = int(CENTER_X + x * GRID_SIZE)
                             py = int(CENTER_Y - y * GRID_SIZE)
-                            obstacle_pixel_pos = (px, py)
                             obstacle_history.append((px, py))
+
+                            change_points = costmap.obstacle_layer(0, 0, x, y, obstacle_map)
+                            for (ox,oy),state in change_points:
+                                if state == 1:  
+                                    pygame.draw.circle(map_surface, (0, 0, 255), (CENTER_X+ox*GRID_SIZE, CENTER_Y-oy*GRID_SIZE), 2)
+                                elif state == 0:  
+                                    pygame.draw.circle(map_surface, (0, 255, 0), (CENTER_X+ox*GRID_SIZE, CENTER_Y-oy*GRID_SIZE), 2)
+                                else:
+                                    continue
+
                             #costmap.obstacle_layer(0, 0, x, y, obstacle_map)
                             #counter += 1
-
                             # if counter % 250 == 0:  
                             #     inflated_map = costmap.inflation_layer(obstacle_map, inflation_radius=5)
                             #     counter = 0
@@ -139,17 +148,11 @@ try:
         screen.fill(COLOR_BG)
         draw_gridmap()
         
+        screen.blit(map_surface, (0, 0))
+
         for px, py in obstacle_history:
             pygame.draw.circle(screen, (255, 0, 0), (px, py), 5)
-        '''
-        for (px,py), state in obstacle_map.items():
-            if state == 1:  
-                pygame.draw.circle(screen, (0, 0, 255), (CENTER_X+px*GRID_SIZE, CENTER_Y-py*GRID_SIZE), 2)
-            elif state == 0:  
-                pygame.draw.circle(screen, (0, 255, 0), (CENTER_X+px*GRID_SIZE, CENTER_Y-py*GRID_SIZE), 2)
-            else:
-                continue
-        '''     
+
         pygame.display.flip()
         clock.tick(80)
 
