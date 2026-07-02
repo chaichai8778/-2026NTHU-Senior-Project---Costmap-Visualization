@@ -2,7 +2,7 @@ import pygame
 import sys
 import serial
 import time
-from caculation import obstacle_position
+import caculation
 import costmap
 
 pygame.init()
@@ -13,10 +13,14 @@ input_array = []
 input_trigger = False
 BAUD_RATE = 115200
 obstacle_history = []
+car_theta = 0
+car_x = 0
+car_y = 0
+
 
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 600
-GRID_SIZE = 20  
+GRID_SIZE = 5  
 
 # color
 COLOR_BG = (240, 240, 240)       # 背景淺灰
@@ -36,10 +40,12 @@ font_bold = pygame.font.SysFont("arial", 14, bold=True)
 CENTER_X = WINDOW_WIDTH // 2
 CENTER_Y = WINDOW_HEIGHT // 2
 
-inflation_radius = 10  
+inflation_radius = 6  
 obstacle_map = {}  
+inflation_map = {}
 counter = 0
-map_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+obstacle_map_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+inflated_map_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
 
 def draw_gridmap():
     x_pixel = CENTER_X
@@ -105,37 +111,73 @@ try:
                     
                     input_array = data_string.split(",")
 
-                    if len(input_array) >= 2:
+                    if len(input_array) >= 3:
                         val_str1 = input_array[0].strip()
-                        val_str2 = input_array[-1].strip()
+                        val_str2 = input_array[1].strip()
+                        val_str3 = input_array[-1].strip()
                         
+                        print(val_str2,val_str3)
                         # if val_str1 and val_str2 are not empty, convert to float
-                        if val_str1 and val_str2:
+                        if val_str1 and val_str2 and val_str3:
                             obstacle_distance = float(val_str1)
-                            absolute_angle = float(val_str2)
+                            deltaSL = float(val_str2)
+                            deltaSR = float(val_str3)
                             
-                            x, y = obstacle_position(obstacle_distance, absolute_angle)
+                            car_x, car_y, car_theta = caculation.car_position(car_x, car_y, car_theta, deltaSL, deltaSR)
+                            rel_obs_x, rel_obs_y = caculation.obs_pos(obstacle_distance, car_theta)
                             
-                            # pixel coordinates
-                            px = int(CENTER_X + x * GRID_SIZE)
-                            py = int(CENTER_Y - y * GRID_SIZE)
+                            obs_x = car_x + rel_obs_x
+                            obs_y = car_y + rel_obs_y
+
+                            # realtime obstacle
+                            px = int(CENTER_X + obs_x * GRID_SIZE)
+                            py = int(CENTER_Y - obs_y * GRID_SIZE)
                             obstacle_history.append((px, py))
+                            
+                            # obstacle layer visualization
+                            change_points, new_obs_point, removed_obs = costmap.obs_layer(car_x, car_y, obs_x, obs_y, obstacle_map)
 
-                            change_points = costmap.obstacle_layer(0, 0, x, y, obstacle_map)
-                            for (ox,oy),state in change_points:
-                                if state == 1:  
-                                    pygame.draw.circle(map_surface, (0, 0, 255), (CENTER_X+ox*GRID_SIZE, CENTER_Y-oy*GRID_SIZE), 2)
-                                elif state == 0:  
-                                    pygame.draw.circle(map_surface, (0, 255, 0), (CENTER_X+ox*GRID_SIZE, CENTER_Y-oy*GRID_SIZE), 2)
-                                else:
-                                    continue
-
-                            #costmap.obstacle_layer(0, 0, x, y, obstacle_map)
-                            #counter += 1
-                            # if counter % 250 == 0:  
-                            #     inflated_map = costmap.inflation_layer(obstacle_map, inflation_radius=5)
-                            #     counter = 0
+                            if removed_obs is not None: 
+                                tt_obs_points = []       
+                                for (ox,oy),state in change_points:
+                                    if state == 1:  
+                                        pygame.draw.circle(obstacle_map_surface, (0, 0, 255), (CENTER_X+ox*GRID_SIZE, CENTER_Y-oy*GRID_SIZE), 4)
+                                    elif state == 0:  
+                                        pygame.draw.circle(obstacle_map_surface, (0, 255, 0), (CENTER_X+ox*GRID_SIZE, CENTER_Y-oy*GRID_SIZE), 4)
+                                    else:
+                                        continue
                                 
+                                if removed_obs:
+                                    for rx, ry in removed_obs:
+                                        
+                                        # rmove cost
+                                        for dx in range(-inflation_radius, inflation_radius + 1):
+                                            for dy in range(-inflation_radius, inflation_radius + 1):
+                                                target_key = (rx + dx, ry + dy)
+                                                if target_key in inflation_map:
+                                                    del inflation_map[target_key]
+
+                                        rect_x = CENTER_X + (rx - inflation_radius) * GRID_SIZE
+                                        rect_y = CENTER_Y - (ry + inflation_radius + 1) * GRID_SIZE
+                                        rect_size = (2 * inflation_radius + 1) * GRID_SIZE
+                                        inflated_map_surface.fill((0, 0, 0, 0), (rect_x, rect_y, rect_size, rect_size))
+
+                                        #rebiuld exist obs inflation layer
+                                        search_r = 2 * inflation_radius
+                                        
+                                        for nx in range(-search_r, search_r + 1):
+                                            for ny in range(-search_r, search_r + 1):
+                                                neighbor_pt = (rx + nx, ry + ny)
+                                                if obstacle_map.get(neighbor_pt) == 1:
+                                                    tt_obs_points.append(neighbor_pt)
+                            
+                        # inflation layer visualization
+                        for (fx, fy), cost in costmap.inflation_layer(tt_obs_points, inflation_radius, inflation_map):
+                            rect_x = CENTER_X + fx * GRID_SIZE
+                            rect_y = CENTER_Y - (fy + 1) * GRID_SIZE 
+                            
+                            pygame.draw.rect(inflated_map_surface, (255, 0, 0, cost), (rect_x, rect_y, GRID_SIZE, GRID_SIZE))
+
                             if len(obstacle_history) > 500:
                                 obstacle_history.pop(0)
             except UnicodeDecodeError:
@@ -145,13 +187,19 @@ try:
             if event.type == pygame.QUIT:
                 running = False
 
+        #pygame display
         screen.fill(COLOR_BG)
         draw_gridmap()
-        
-        screen.blit(map_surface, (0, 0))
+
+        screen.blit(obstacle_map_surface, (0, 0))
+        screen.blit(inflated_map_surface, (0, 0))
 
         for px, py in obstacle_history:
             pygame.draw.circle(screen, (255, 0, 0), (px, py), 5)
+
+        car_pixel_x = int(CENTER_X + car_x * GRID_SIZE)
+        car_pixel_y = int(CENTER_Y - car_y * GRID_SIZE)
+        pygame.draw.circle(screen, (0, 10, 200), (car_pixel_x, car_pixel_y), 6) # 藍色小車
 
         pygame.display.flip()
         clock.tick(80)
