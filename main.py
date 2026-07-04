@@ -116,7 +116,6 @@ try:
                         val_str2 = input_array[1].strip()
                         val_str3 = input_array[-1].strip()
                         
-                        print(val_str2,val_str3)
                         # if val_str1 and val_str2 are not empty, convert to float
                         if val_str1 and val_str2 and val_str3:
                             obstacle_distance = float(val_str1)
@@ -176,7 +175,7 @@ try:
                             rect_x = CENTER_X + fx * GRID_SIZE
                             rect_y = CENTER_Y - (fy + 1) * GRID_SIZE 
                             
-                            pygame.draw.rect(inflated_map_surface, (255, 0, 0, cost), (rect_x, rect_y, GRID_SIZE, GRID_SIZE))
+                            pygame.draw.rect(inflated_map_surface, (255, 0, 0, 100), (rect_x, rect_y, GRID_SIZE, GRID_SIZE))
 
                             if len(obstacle_history) > 500:
                                 obstacle_history.pop(0)

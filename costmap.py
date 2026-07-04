@@ -55,7 +55,7 @@ def inflation_layer(obs_points, inflation_radius, inflation_map):
             
                 if distance > inflation_radius:
                     continue
-                cost = int(255 * (1.0 - (distance / inflation_radius)))
+                cost = 1
 
                 current_cost = inflation_map.get((fx, fy), 0)
                 if cost > current_cost:
