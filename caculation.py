@@ -8,10 +8,16 @@ def obs_pos(distance, angle_degrees):
 
     return x, y
 
-#output cm,degree
+
 def car_position(car_x, car_y, car_theta, deltaSL, deltaSR):
+    """
+    Car's position(cm) and orientation(degree)
+    car_x, y: cm
+    car_theta: degrees
+    deltaSL, R: m
+    """
     delta_s = (deltaSL + deltaSR) * 50
-    delta_theta = (deltaSL - deltaSR) / 0.195
+    delta_theta = (deltaSR - deltaSL) / 0.195
     
     car_x += delta_s * math.cos(math.radians(car_theta) + delta_theta / 2.0)
     car_y += delta_s * math.sin(math.radians(car_theta) + delta_theta / 2.0)
@@ -23,3 +29,17 @@ def car_position(car_x, car_y, car_theta, deltaSL, deltaSR):
        car_theta +=360
 
     return car_x, car_y, car_theta
+
+def world_to_pixel(CENTER_X, CENTER_Y, x, y, GRID_SIZE):
+    """
+    Convert world coordinates (x, y) to pixel coordinates (px, py) for visualization.
+    """
+    px = int(CENTER_X + x * GRID_SIZE)
+    py = int(CENTER_Y - y * GRID_SIZE)
+    return px, py
+
+def pixel_to_world(CENTER_X, CENTER_Y, x, y, GRID_SIZE):
+    """將 Pygame 螢幕像素座標轉換為世界網格座標"""
+    world_x = math.floor((x - CENTER_X) / GRID_SIZE)
+    world_y = math.floor((CENTER_Y - y) / GRID_SIZE)
+    return world_x, world_y

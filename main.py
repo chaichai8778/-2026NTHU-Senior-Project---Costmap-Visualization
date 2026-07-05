@@ -2,8 +2,7 @@ import pygame
 import sys
 import serial
 import time
-import caculation
-import costmap
+import costmap, planner, caculation, draw
 
 pygame.init()
 
@@ -18,16 +17,13 @@ car_x = 0
 car_y = 0
 
 
-WINDOW_WIDTH = 800
+WINDOW_WIDTH = 1000
 WINDOW_HEIGHT = 600
-GRID_SIZE = 5  
+GRID_SIZE = 4
+SENSOR_OFFSET = 11.5 #cm
+inflation_radius = 6  
 
 # color
-COLOR_BG = (240, 240, 240)       # 背景淺灰
-COLOR_GRID = (210, 210, 210)     # 網格線淡灰
-COLOR_AXIS = (50, 50, 50)        # 主座標軸深灰
-COLOR_TEXT = (100, 100, 100)     # 標籤文字灰色
-COLOR_ORIGIN = (255, 57, 57)     # 原點紅色
 COLOR_CROSSHAIR = (0, 150, 255, 100) # 準星藍色 (帶有一點透明度)
 
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -40,60 +36,15 @@ font_bold = pygame.font.SysFont("arial", 14, bold=True)
 CENTER_X = WINDOW_WIDTH // 2
 CENTER_Y = WINDOW_HEIGHT // 2
 
-inflation_radius = 6  
+base_map = draw.grid_map(screen, GRID_SIZE)
+
 obstacle_map = {}  
 inflation_map = {}
+goal_grid = (15, 15) 
+path_cells = []      
 counter = 0
 obstacle_map_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
 inflated_map_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
-
-def draw_gridmap():
-    x_pixel = CENTER_X
-    grid_count = 0
-    while x_pixel < WINDOW_WIDTH:
-        if grid_count != 0:
-            pygame.draw.line(screen, COLOR_GRID, (x_pixel, 0), (x_pixel, WINDOW_HEIGHT), 1)
-            text = font.render(str(grid_count), True, COLOR_TEXT)
-            screen.blit(text, (x_pixel - text.get_width()//2, CENTER_Y + 5))
-        x_pixel += GRID_SIZE
-        grid_count += 1
-
-    x_pixel = CENTER_X
-    grid_count = 0
-    while x_pixel > 0:
-        if grid_count != 0:
-            pygame.draw.line(screen, COLOR_GRID, (x_pixel, 0), (x_pixel, WINDOW_HEIGHT), 1)
-            text = font.render(str(grid_count), True, COLOR_TEXT)
-            screen.blit(text, (x_pixel - text.get_width()//2, CENTER_Y + 5))
-        x_pixel -= GRID_SIZE
-        grid_count -= 1
-
-    y_pixel = CENTER_Y
-    grid_count = 0
-    while y_pixel < WINDOW_HEIGHT:
-        if grid_count != 0:
-            pygame.draw.line(screen, COLOR_GRID, (0, y_pixel), (WINDOW_WIDTH, y_pixel), 1)
-            text = font.render(str(grid_count), True, COLOR_TEXT)
-            screen.blit(text, (CENTER_X + 8, y_pixel - text.get_height()//2))
-        y_pixel += GRID_SIZE
-        grid_count -= 1
-
-    y_pixel = CENTER_Y
-    grid_count = 0
-    while y_pixel > 0:
-        if grid_count != 0:
-            pygame.draw.line(screen, COLOR_GRID, (0, y_pixel), (WINDOW_WIDTH, y_pixel), 1)
-            text = font.render(str(grid_count), True, COLOR_TEXT)
-            screen.blit(text, (CENTER_X + 8, y_pixel - text.get_height()//2))
-        y_pixel -= GRID_SIZE
-        grid_count += 1
-
-    pygame.draw.line(screen, COLOR_AXIS, (0, CENTER_Y), (WINDOW_WIDTH, CENTER_Y), 3) # X 軸
-    pygame.draw.line(screen, COLOR_AXIS, (CENTER_X, 0), (CENTER_X, WINDOW_HEIGHT), 3) # Y 軸
-
-    pygame.draw.circle(screen, COLOR_ORIGIN, (CENTER_X, CENTER_Y), 6)
-    origin_text = font_bold.render("(0,0)", True, COLOR_ORIGIN)
-    screen.blit(origin_text, (CENTER_X - 35, CENTER_Y - 20))
 
 try:
     ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1)
@@ -102,7 +53,24 @@ try:
     time.sleep(2) 
 
     while running:
+        map_changed = False
+    
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                
+            if event.type == pygame.MOUSEBUTTONUP:
+                last_grid_pos = None
+                
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 2: 
+                    mx, my = pygame.mouse.get_pos()
+                    goal_grid = caculation.pixel_to_world(CENTER_X, CENTER_Y, mx, my, GRID_SIZE)
+                    map_changed = True
+
+        tt_obs_points = [] 
         while ser.in_waiting > 0:
+            print("in")
             raw_data = ser.readline()
             try:
                 data_string = raw_data.decode('utf-8', errors='ignore').strip()
@@ -116,30 +84,47 @@ try:
                         val_str2 = input_array[1].strip()
                         val_str3 = input_array[-1].strip()
                         
+                        
                         # if val_str1 and val_str2 are not empty, convert to float
                         if val_str1 and val_str2 and val_str3:
-                            obstacle_distance = float(val_str1)
-                            deltaSL = float(val_str2)
-                            deltaSR = float(val_str3)
-                            
+                            try:
+                                val_str1 = val_str1.replace('\r', '').strip()
+                                obstacle_distance = float(val_str1)+SENSOR_OFFSET
+                            except ValueError:
+                                print(f"error obstacle_distance: {val_str1}")
+                                obstacle_distance = 0.0
+                                
+                            try:
+                                val_str2 = val_str2.replace('\r', '').strip()
+                                deltaSL = float(val_str2)
+                            except ValueError:
+                                print(f"error deltaSL: {val_str2}")
+                                deltaSL = 0.0
+
+                            try:
+                                val_str3 = val_str3.replace('\r', '').strip()
+                                deltaSR = float(val_str3)
+                            except ValueError:
+                                print(f"error deltaSR: {val_str3}")
+                                deltaSR = 0.0  
+
                             car_x, car_y, car_theta = caculation.car_position(car_x, car_y, car_theta, deltaSL, deltaSR)
                             rel_obs_x, rel_obs_y = caculation.obs_pos(obstacle_distance, car_theta)
                             
-                            obs_x = car_x + rel_obs_x
-                            obs_y = car_y + rel_obs_y
+                            obs_x = int(car_x) + int(rel_obs_x)
+                            obs_y = int(car_y) + int(rel_obs_y)
 
                             # realtime obstacle
-                            px = int(CENTER_X + obs_x * GRID_SIZE)
-                            py = int(CENTER_Y - obs_y * GRID_SIZE)
+                            px, py = caculation.world_to_pixel(CENTER_X, CENTER_Y, obs_x, obs_y, GRID_SIZE)
                             obstacle_history.append((px, py))
                             
                             # obstacle layer visualization
                             change_points, new_obs_point, removed_obs = costmap.obs_layer(car_x, car_y, obs_x, obs_y, obstacle_map)
 
-                            if removed_obs is not None: 
-                                tt_obs_points = []       
+                            if removed_obs is not None:     
                                 for (ox,oy),state in change_points:
                                     if state == 1:  
+                                        tt_obs_points.append((ox, oy))
                                         pygame.draw.circle(obstacle_map_surface, (0, 0, 255), (CENTER_X+ox*GRID_SIZE, CENTER_Y-oy*GRID_SIZE), 4)
                                     elif state == 0:  
                                         pygame.draw.circle(obstacle_map_surface, (0, 255, 0), (CENTER_X+ox*GRID_SIZE, CENTER_Y-oy*GRID_SIZE), 4)
@@ -147,6 +132,7 @@ try:
                                         continue
                                 
                                 if removed_obs:
+                                    inflation_map_needs_update = True 
                                     for rx, ry in removed_obs:
                                         
                                         # rmove cost
@@ -156,8 +142,7 @@ try:
                                                 if target_key in inflation_map:
                                                     del inflation_map[target_key]
 
-                                        rect_x = CENTER_X + (rx - inflation_radius) * GRID_SIZE
-                                        rect_y = CENTER_Y - (ry + inflation_radius + 1) * GRID_SIZE
+                                        rect_x, rect_y = caculation.world_to_pixel(CENTER_X, CENTER_Y, rx-inflation_radius, ry + inflation_radius + 1, GRID_SIZE)
                                         rect_size = (2 * inflation_radius + 1) * GRID_SIZE
                                         inflated_map_surface.fill((0, 0, 0, 0), (rect_x, rect_y, rect_size, rect_size))
 
@@ -169,36 +154,60 @@ try:
                                                 neighbor_pt = (rx + nx, ry + ny)
                                                 if obstacle_map.get(neighbor_pt) == 1:
                                                     tt_obs_points.append(neighbor_pt)
-                            
-                        # inflation layer visualization
-                        for (fx, fy), cost in costmap.inflation_layer(tt_obs_points, inflation_radius, inflation_map):
-                            rect_x = CENTER_X + fx * GRID_SIZE
-                            rect_y = CENTER_Y - (fy + 1) * GRID_SIZE 
-                            
-                            pygame.draw.rect(inflated_map_surface, (255, 0, 0, 100), (rect_x, rect_y, GRID_SIZE, GRID_SIZE))
+
+                                if tt_obs_points:
+                                    unique_obs_points = list(set(tt_obs_points))
+                                    # inflation layer visualization
+                                    for (fx, fy), cost in costmap.inflation_layer(unique_obs_points, inflation_radius, inflation_map):
+                                        rect_x, rect_y = caculation.world_to_pixel(CENTER_X, CENTER_Y, fx, fy + 1, GRID_SIZE)
+                                        pygame.draw.rect(inflated_map_surface, (255, 0, 0, 100), (rect_x, rect_y, GRID_SIZE, GRID_SIZE))
+                                
 
                             if len(obstacle_history) > 500:
                                 obstacle_history.pop(0)
             except UnicodeDecodeError:
                 pass
+            print("out")
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
+        if map_changed or 'prev_map_state' not in locals():
+            print("in")
+            start_tuple = (int(car_x), int(car_y))
+            goal_tuple = (int(goal_grid[0]), int(goal_grid[1]))
+            path_cells = planner.astar(start_tuple, goal_tuple, inflation_map)
+            print("out")
+            prev_map_state = True
 
-        #pygame display
-        screen.fill(COLOR_BG)
-        draw_gridmap()
+        #base map
 
-        screen.blit(obstacle_map_surface, (0, 0))
+        screen.fill(base_map.COLOR[0])  # Fill the background with the base color
+        base_map.draw_grid(screen)
+
+
+        #screen.blit(obstacle_map_surface, (0, 0))
         screen.blit(inflated_map_surface, (0, 0))
 
+        """
         for px, py in obstacle_history:
             pygame.draw.circle(screen, (255, 0, 0), (px, py), 5)
+        """
 
-        car_pixel_x = int(CENTER_X + car_x * GRID_SIZE)
-        car_pixel_y = int(CENTER_Y - car_y * GRID_SIZE)
-        pygame.draw.circle(screen, (0, 10, 200), (car_pixel_x, car_pixel_y), 6) # 藍色小車
+        #car position
+        car_pixel_x, car_pixel_y = caculation.world_to_pixel(CENTER_X, CENTER_Y, car_x, car_y, GRID_SIZE)
+        pygame.draw.circle(screen, (0, 10, 200), (car_pixel_x, car_pixel_y), 6) 
+
+        #A* path
+        if path_cells:
+            points = []
+            for (gx, gy) in path_cells:
+                px, py = caculation.world_to_pixel(CENTER_X, CENTER_Y, gx, gy, GRID_SIZE)
+                points.append((px, py))
+
+            if len(points) > 1:
+                pygame.draw.lines(screen, (0, 180, 0), False, points, 3)
+
+        #goal point
+        g_px, g_py = caculation.world_to_pixel(CENTER_X, CENTER_Y, goal_grid[0], goal_grid[1], GRID_SIZE)
+        pygame.draw.circle(screen, (0, 200, 0), (g_px, g_py), 5)
 
         pygame.display.flip()
         clock.tick(80)

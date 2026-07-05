@@ -57,14 +57,12 @@ def inflation_layer(obs_points, inflation_radius, inflation_map):
                     continue
                 cost = 1
 
-                current_cost = inflation_map.get((fx, fy), 0)
-                if cost > current_cost:
-                    inflation_map[(fx, fy)] = cost
-                    inflation_area.append(((fx, fy), cost))
+                inflation_map[(fx, fy)] = cost
+                inflation_area.append(((fx, fy), cost))
 
     return inflation_area
 
-def remove_infation(removed_obs, inflation_radius, inflation_map):
+def remove_inflation(removed_obs, inflation_radius, inflation_map):
     if removed_obs:
         for rx, ry in removed_obs:
             for dx in range(-inflation_radius, inflation_radius + 1):
