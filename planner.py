@@ -48,7 +48,7 @@ def _los( inflation_map, a, b):
             cr += sr
 
 def _smooth(path, inflation_map):
-    if not path or len(path) < 16:
+    if not path or len(path) < 4:
         return path
     smoothed = [path[0]]
     i = 0
