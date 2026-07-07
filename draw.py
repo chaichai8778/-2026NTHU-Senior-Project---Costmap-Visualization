@@ -1,5 +1,6 @@
 import pygame
 import caculation
+import math
 
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 600
@@ -94,10 +95,16 @@ class Gridmap:
         g_px, g_py = caculation.world_to_pixel(self.CENTER_X, self.CENTER_Y, g_x, g_y, self.GRID_SIZE)
         pygame.draw.circle(self.screen, (0, 200, 0), (g_px, g_py), 5)
 
-    def draw_car_position(self, car_x, car_y):
+    def draw_car_position(self, car_x, car_y, car_angle_deg):
         car_pixel_x, car_pixel_y = caculation.world_to_pixel(self.CENTER_X, self.CENTER_Y, car_x, car_y, self.GRID_SIZE)
-        pygame.draw.circle(self.screen, (0, 10, 200), (car_pixel_x, car_pixel_y), 6)    
+        rect_length = 25  
+        rect_width = 4
+        angle_rad = math.radians(car_angle_deg)
+        end_x = car_pixel_x + rect_length * math.cos(angle_rad)
+        end_y = car_pixel_y - rect_length * math.sin(angle_rad)
 
+        pygame.draw.line(self.screen, (0, 50, 150), (car_pixel_x, car_pixel_y), (end_x, end_y), rect_width)
+        pygame.draw.circle(self.screen, (0, 10, 200), (car_pixel_x, car_pixel_y), 6) 
 class Obsmap:
     def __init__(self, screen_size, grid_size):
         self.obs_map_surface = pygame.Surface((screen_size[0], screen_size[1]), pygame.SRCALPHA)
