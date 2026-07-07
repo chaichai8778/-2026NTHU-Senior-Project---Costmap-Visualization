@@ -2,7 +2,8 @@ import pygame
 import sys
 import serial
 import time
-import costmap, planner, caculation, draw, read_arduino
+import costmap, caculation, draw, read_arduino
+from planner import Plan
 
 pygame.init()
 
@@ -44,6 +45,8 @@ pg_infla_map = draw.Inflamap(screen_size, GRID_SIZE)
 
 COSTMAP = costmap.Costmap()
 
+planner = Plan(COSTMAP.infla_layer.infla_map)
+
 goal_x, goal_y = 15, 15
 path_cells = []      
 
@@ -78,6 +81,7 @@ try:
                 if data_string: 
                     
                     obstacle_distance, deltaSL, deltaSR = read_arduino.decode(data_string)
+
                     if obstacle_distance is None :
                         continue
                     
@@ -107,13 +111,18 @@ try:
             except UnicodeDecodeError:
                 pass
 
-        if map_changed or 'prev_map_state' not in locals():
+        if planner.should_replan or 'prev_map_state' not in locals():
             start_tuple = (int(car_x), int(car_y))
             goal_tuple = (int(goal_x), int(goal_y))
-            path_cells = planner.astar(start_tuple, goal_tuple, COSTMAP.infla_layer.infla_map)
+            path_cells = planner.astar(start_tuple, goal_tuple)
             print(path_cells)
             prev_map_state = True
 
+        """
+        to_Arduino = f"{car_x},{car_y},{path_cells[0][0]},{path_cells[0][1]}\n"
+        ser.write(data_string.encode('utf-8'))
+        print(f"[Python 發送] {data_string.strip()}")
+        """
         #base map
 
         screen.fill(base_map.COLOR[0])  # Fill the background with the base color
