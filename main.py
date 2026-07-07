@@ -4,6 +4,7 @@ import serial
 import time
 import costmap, caculation, draw, read_arduino
 from planner import Plan
+import struct
 
 pygame.init()
 
@@ -14,9 +15,7 @@ input_trigger = False
 BAUD_RATE = 115200
 obstacle_history = []
 car_theta = 0
-car_x = 0
-car_y = 0
-
+car_x, car_y = 0, 0
 
 WINDOW_WIDTH = 1000
 WINDOW_HEIGHT = 600
@@ -47,7 +46,7 @@ COSTMAP = costmap.Costmap()
 
 planner = Plan(COSTMAP.infla_layer.infla_map)
 
-goal_x, goal_y = 15, 15
+goal_x, goal_y = 0, 0
 path_cells = []      
 
 try:
@@ -56,6 +55,7 @@ try:
     running = True
     time.sleep(2) 
 
+    last_send_time = time.time()
     while running:
         map_changed = False
     
@@ -111,24 +111,32 @@ try:
             except UnicodeDecodeError:
                 pass
 
-        if planner.should_replan or 'prev_map_state' not in locals():
+        current_time = time.time()
+        if current_time - last_send_time > 0.05:
             start_tuple = (int(car_x), int(car_y))
             goal_tuple = (int(goal_x), int(goal_y))
             path_cells = planner.astar(start_tuple, goal_tuple)
-            print(path_cells)
+            #print(path_cells)
             prev_map_state = True
 
-        """
-        to_Arduino = f"{car_x},{car_y},{path_cells[0][0]},{path_cells[0][1]}\n"
-        ser.write(data_string.encode('utf-8'))
-        print(f"[Python 發送] {data_string.strip()}")
-        """
+            if path_cells and len(path_cells) > 1:
+                next_target = path_cells[1] 
+                target_x = int(next_target[0])
+                target_y = int(next_target[1])
+                print(f"{int(car_x)},{int(car_y)},{target_x},{target_y}\n")
+                send_string = f"{int(car_x)},{int(car_y)},{target_x},{target_y}\n" 
+                ser.write(send_string.encode('utf-8'))
+                    
+            else:
+                send_string = f"{car_x},{car_y},{car_x},{car_y}\n"
+                ser.write(send_string.encode('utf-8'))
+
         #base map
 
         screen.fill(base_map.COLOR[0])  # Fill the background with the base color
         base_map.draw_grid(screen)
         base_map.draw_Unstd_obs_point(obstacle_history)
-        base_map.draw_car_position(car_x, car_y)
+        base_map.draw_car_position(car_x, car_y, car_theta)
         base_map.draw_Astar_path(path_cells)
         base_map.draw_goal_point(goal_x, goal_y)
 
